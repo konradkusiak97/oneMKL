@@ -45,23 +45,13 @@ cublasHandle_t CublasScopedContextHandler::get_handle(const sycl::queue& queue) 
     cublasStatus_t err;
     auto it = handle_helper.cublas_handle_mapper_.find(desiredCtx);
     if (it != handle_helper.cublas_handle_mapper_.end()) {
-        if (it->second == nullptr) {
-            handle_helper.cublas_handle_mapper_.erase(it);
+        auto handle = it->second;
+        cudaStream_t currentStreamId;
+        CUBLAS_ERROR_FUNC(cublasGetStream, err, handle, &currentStreamId);
+        if (currentStreamId != streamId) {
+            CUBLAS_ERROR_FUNC(cublasSetStream, err, handle, streamId);
         }
-        else {
-            auto handle = it->second->load();
-            if (handle != nullptr) {
-                cudaStream_t currentStreamId;
-                CUBLAS_ERROR_FUNC(cublasGetStream, err, handle, &currentStreamId);
-                if (currentStreamId != streamId) {
-                    CUBLAS_ERROR_FUNC(cublasSetStream, err, handle, streamId);
-                }
-                return handle;
-            }
-            else {
-                handle_helper.cublas_handle_mapper_.erase(it);
-            }
-        }
+        return handle;
     }
 
     cublasHandle_t handle;
@@ -70,7 +60,7 @@ cublasHandle_t CublasScopedContextHandler::get_handle(const sycl::queue& queue) 
     CUBLAS_ERROR_FUNC(cublasSetStream, err, handle, streamId);
 
     auto insert_iter = handle_helper.cublas_handle_mapper_.insert(
-        std::make_pair(desiredCtx, new std::atomic<cublasHandle_t>(handle)));
+                  std::make_pair(desiredCtx, handle));
 
     return handle;
 }
