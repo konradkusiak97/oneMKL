@@ -38,12 +38,17 @@ CublasScopedContextHandler::CublasScopedContextHandler(sycl::queue queue, sycl::
     if (!device_handle_map) {
         device_handle_map = std::shared_ptr<std::unordered_map<CUdevice, cublasHandle_t>>(
             new std::unordered_map<CUdevice, cublasHandle_t>(), [](auto* map) {
+                cublasStatus_t err;
+                CUresult cuErr;
+                CUcontext primaryCtx;
                 for (auto& handle_pair : *map) {
-                    cublasStatus_t err;
+                    CUdevice currentDevice{handle_pair.first};
+                    CUDA_ERROR_FUNC(cuDevicePrimaryCtxRetain, cuErr, &primaryCtx, currentDevice);
+                    CUDA_ERROR_FUNC(cuCtxSetCurrent, cuErr, primaryCtx);
+                    
                     cublasHandle_t& handle = handle_pair.second;
                     CUBLAS_ERROR_FUNC(cublasDestroy, err, handle);
                 }
-                map->clear();
                 delete map;
             });
     }
