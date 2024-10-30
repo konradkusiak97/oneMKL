@@ -23,60 +23,21 @@ namespace mkl {
 namespace blas {
 namespace cublas {
 
-/**
- * Inserts a new element in the map if its key is unique. This new element
- * is constructed in place using args as the arguments for the construction
- * of a value_type (which is an object of a pair type). The insertion only
- * takes place if no other element in the container has a key equivalent to
- * the one being emplaced (keys in a map container are unique).
- */
-thread_local std::shared_ptr<std::unordered_map<CUdevice, cublasHandle_t>>
-    CublasScopedContextHandler::device_handle_map{ nullptr };
-
-CublasScopedContextHandler::CublasScopedContextHandler(sycl::queue queue, sycl::interop_handle& ih)
-        : ih(ih) {
-    if (!device_handle_map) {
-        device_handle_map = std::shared_ptr<std::unordered_map<CUdevice, cublasHandle_t>>(
-            new std::unordered_map<CUdevice, cublasHandle_t>(), [](auto* map) {
-                cublasStatus_t err;
-                CUresult cuErr;
-                CUcontext primaryCtx;
-                for (auto& handle_pair : *map) {
-                    CUdevice currentDevice{handle_pair.first};
-                    CUDA_ERROR_FUNC(cuDevicePrimaryCtxRetain, cuErr, &primaryCtx, currentDevice);
-                    CUDA_ERROR_FUNC(cuCtxSetCurrent, cuErr, primaryCtx);
-                    
-                    cublasHandle_t& handle = handle_pair.second;
-                    CUBLAS_ERROR_FUNC(cublasDestroy, err, handle);
-                }
-                delete map;
-            });
-    }
+CublasScopedContextHandler::CublasScopedContextHandler(sycl::interop_handle& ih)
+        : ih(ih), nativeDevice(ih.get_native_device<sycl::backend::ext_oneapi_cuda>()) {
+    cublasStatus_t err;
+    CUBLAS_ERROR_FUNC(cublasCreate, err, &cublasHandle);
 }
 
 cublasHandle_t CublasScopedContextHandler::get_handle(const sycl::queue& queue) {
-    CUdevice device = ih.get_native_device<sycl::backend::ext_oneapi_cuda>();
     CUstream streamId = get_stream(queue);
+    cudaStream_t currentStreamId;
     cublasStatus_t err;
-
-    auto it = device_handle_map->find(device);
-    if (it != device_handle_map->end()) {
-        cublasHandle_t handle = it->second;
-        cudaStream_t currentStreamId;
-        CUBLAS_ERROR_FUNC(cublasGetStream, err, handle, &currentStreamId);
-        if (currentStreamId != streamId) {
-            CUBLAS_ERROR_FUNC(cublasSetStream, err, handle, streamId);
-        }
-        return handle;
+    CUBLAS_ERROR_FUNC(cublasGetStream, err, cublasHandle, &currentStreamId);
+    if (currentStreamId != streamId) {
+        CUBLAS_ERROR_FUNC(cublasSetStream, err, cublasHandle, streamId);
     }
-
-    cublasHandle_t handle;
-    CUBLAS_ERROR_FUNC(cublasCreate, err, &handle);
-    CUBLAS_ERROR_FUNC(cublasSetStream, err, handle, streamId);
-
-    (*device_handle_map)[device] = handle;
-
-    return handle;
+    return cublasHandle;
 }
 
 CUstream CublasScopedContextHandler::get_stream(const sycl::queue& queue) {

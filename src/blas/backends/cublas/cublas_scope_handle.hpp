@@ -64,13 +64,13 @@ the handle must be destroyed when the context goes out of scope. This will bind 
 
 class CublasScopedContextHandler {
     sycl::interop_handle& ih;
-    static thread_local std::shared_ptr<std::unordered_map<CUdevice, cublasHandle_t>>
-        device_handle_map;
+    CUdevice nativeDevice;
+    cublasHandle_t cublasHandle;
     CUstream get_stream(const sycl::queue& queue);
     sycl::context get_context(const sycl::queue& queue);
 
 public:
-    CublasScopedContextHandler(sycl::queue queue, sycl::interop_handle& ih);
+    CublasScopedContextHandler(sycl::interop_handle& ih);
 
     /**
    * @brief get_handle: creates the handle by implicitly impose the advice
