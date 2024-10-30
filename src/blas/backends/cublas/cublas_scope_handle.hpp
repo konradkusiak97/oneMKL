@@ -46,20 +46,6 @@ According to NVIDIA:
 http://docs.nvidia.com/cuda/cublas/index.html#thread-safety2changeme
 3)	It is neither required nor recommended that different handles be used for different streams on the same device,
  using the same host thread.
-
-However, the 3 above advises are for using cuda runtime API. The NVIDIA runtime API creates a default context for users. 
-The createHandle function in cuBLAS uses the context located on top of the stack for each thread. Then, the cuBLAS routine 
-uses this context for resource allocation/access. Calling a cuBLAS function with a handle created for context A and 
-memories/queue created for context B results in a segmentation fault. Thus we need to create one handle per context 
-and per thread. A context can have multiple streams, so the important thing here is to have one cublasHandle per driver 
-context and that cuBLAS handle can switch between multiple streams created for that context. Here, we are dealing with 
-CUDA driver API, therefore, the SYCL-CUDA backend controls the context. If a queue(equivalent of CUDA stream) is associated 
-with a context different from the one on top of the thread stack(can be any context which associated at any time by either 
-the runtime or user for any specific reason), the context associated with the queue must be moved on top of the stack 
-temporarily for the requested routine operations. However, after the cuBLAS routine execution, the original context must 
-be restored to prevent intervening with the original user/runtime execution set up. Here, the RAII type context switch 
-is used to guarantee to recover the original CUDA context. The cuBLAS handle allocates internal resources, therefore, 
-the handle must be destroyed when the context goes out of scope. This will bind the life of cuBLAS handle to the SYCL context.
 **/
 
 class CublasScopedContextHandler {
